@@ -2,7 +2,11 @@
 'use client';
 
 import { useState } from 'react';
-import { aiAPI, ChatMessage } from '@/lib/api';
+import api, { aiAPI, ChatMessage } from '@/lib/api';
+
+
+// Add new function:
+
 // ↑ Import ChatMessage type
 
 export function AIInsights() {
@@ -13,6 +17,11 @@ export function AIInsights() {
     const [input, setInput] = useState('');
     const [loadingChat, setLoadingChat] = useState(false);
     const [error, setError] = useState('');
+    // Add new state variables:
+const [deepAnalysis, setDeepAnalysis] = useState('');
+const [loadingDeep, setLoadingDeep] = useState(false);
+const [healthStatus, setHealthStatus] = useState('');
+const [alertMessage, setAlertMessage] = useState('');
 
     const fetchInsights = async () => {
         setLoadingInsights(true);
@@ -26,6 +35,24 @@ export function AIInsights() {
             setLoadingInsights(false);
         }
     };
+
+    const fetchDeepAnalysis = async () => {
+    setLoadingDeep(true);
+    setDeepAnalysis('');
+    setAlertMessage('');
+    
+    try {
+        const response = await api.get('/ai/deep-analysis');
+        setDeepAnalysis(response.data.final_output);
+        setHealthStatus(response.data.financial_health);
+        setAlertMessage(response.data.alert_message);
+    } catch {
+        setDeepAnalysis('Failed to run deep analysis.');
+    } finally {
+        setLoadingDeep(false);
+    }
+};
+
 
     const sendMessage = async () => {
         if (!input.trim()) return;
@@ -169,6 +196,57 @@ export function AIInsights() {
                     </button>
                 </div>
             </div>
+            <div className="bg-white rounded-lg border p-6">
+    <div className="flex items-center justify-between mb-4">
+        <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+                🧠 Deep AI Analysis (LangGraph)
+            </h2>
+            <p className="text-sm text-gray-500">
+                Multi-step AI agent analyzes your complete financial picture
+            </p>
+        </div>
+        <button
+            onClick={fetchDeepAnalysis}
+            disabled={loadingDeep}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 font-medium"
+        >
+            {loadingDeep ? '🔄 Analyzing (10-15s)...' : '🧠 Deep Analysis'}
+        </button>
+    </div>
+
+    {alertMessage && (
+        <div className="bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-lg mb-4">
+            {alertMessage}
+        </div>
+    )}
+
+    {healthStatus && (
+        <div className={`px-4 py-2 rounded-lg text-sm font-medium mb-4 inline-block ${
+            healthStatus === 'healthy'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-orange-100 text-orange-800'
+        }`}>
+            {healthStatus === 'healthy' ? '✅ Healthy Finances' : '⚠️ Needs Attention'}
+        </div>
+    )}
+
+    {deepAnalysis ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-gray-800 whitespace-pre-line text-sm leading-relaxed">
+                {deepAnalysis}
+            </p>
+        </div>
+    ) : (
+        !loadingDeep && (
+            <div className="text-center text-gray-400 py-8">
+                <p className="text-4xl mb-3">🧠</p>
+                <p>Click for comprehensive AI-powered financial analysis</p>
+                <p className="text-xs mt-1">Takes 10-15 seconds • Multiple AI models working together</p>
+            </div>
+        )
+    )}
+</div>
         </div>
     );
 }
