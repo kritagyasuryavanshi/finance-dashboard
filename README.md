@@ -2,7 +2,7 @@
 
 The web frontend for an AI-powered personal finance app. Track income and expenses, then ask an AI assistant about your spending, run agent-based financial analyses, and query your own bank statements with RAG.
 
-**Backend:** [finance-tracker-api](https://github.com/kritagyasuryavanshi/finance-tracker-api) (FastAPI, LangChain, LangGraph, CrewAI)
+**Live demo:** [finance-dashboard-topaz-seven.vercel.app](https://finance-dashboard-topaz-seven.vercel.app) · **Backend:** [finance-tracker-api](https://github.com/kritagyasuryavanshi/finance-tracker-api) (FastAPI, LangChain, LangGraph, CrewAI)
 
 ![Dashboard with income, expense and balance cards and a transaction list](docs/dashboard.png)
 
