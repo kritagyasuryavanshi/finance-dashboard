@@ -1,15 +1,16 @@
 // src/context/AuthContext.tsx
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authAPI, User } from '@/lib/api';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { authAPI, AuthResponse, User } from '@/lib/api';
 
 interface AuthContextType {
     user: User | null;
-    token: string | null;
     loading: boolean;
+    isDemo: boolean;
     login: (email: string, password: string) => Promise<void>;
     signup: (email: string, password: string) => Promise<void>;
+    startDemo: () => Promise<void>;
     logout: () => void;
 }
 
@@ -17,60 +18,39 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Check if already logged in on app load
+    // Restore the session on load (all state updates happen in callbacks)
     useEffect(() => {
-        const savedToken = localStorage.getItem('token');
-
-        if (savedToken) {
-            setToken(savedToken);
-            // Verify token is still valid
-            authAPI.me()
-                .then(userData => {
-                    setUser(userData);
-                })
-                .catch(() => {
-                    // Token expired
-                    localStorage.removeItem('token');
-                    setToken(null);
-                })
-                .finally(() => {
-                    setLoading(false);
-                });
-        } else {
-            setLoading(false);
-        }
+        const saved = localStorage.getItem('token');
+        (saved ? authAPI.me() : Promise.reject(new Error('no session')))
+            .then(setUser)
+            .catch(() => {
+                localStorage.removeItem('token');
+                setUser(null);
+            })
+            .finally(() => setLoading(false));
     }, []);
 
-    const login = async (email: string, password: string) => {
-        const data = await authAPI.login(email, password);
-        localStorage.setItem('token', data.access_token);
-        setToken(data.access_token);
-        const userData = await authAPI.me();
-        setUser(userData);
+    const startSession = async (auth: AuthResponse) => {
+        localStorage.setItem('token', auth.access_token);
+        setUser(await authAPI.me());
     };
 
-    const signup = async (email: string, password: string) => {
-        const data = await authAPI.signup(email, password);
-        localStorage.setItem('token', data.access_token);
-        setToken(data.access_token);
-        const userData = await authAPI.me();
-        setUser(userData);
+    const value: AuthContextType = {
+        user,
+        loading,
+        isDemo: !!user?.email.endsWith('@demo.local'),
+        login: async (email, password) => startSession(await authAPI.login(email.trim(), password)),
+        signup: async (email, password) => startSession(await authAPI.signup(email.trim(), password)),
+        startDemo: async () => startSession(await authAPI.demo()),
+        logout: () => {
+            localStorage.removeItem('token');
+            setUser(null);
+        },
     };
 
-    const logout = () => {
-        localStorage.removeItem('token');
-        setToken(null);
-        setUser(null);
-    };
-
-    return (
-        <AuthContext.Provider value={{ user, token, loading, login, signup, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

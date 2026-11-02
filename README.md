@@ -4,52 +4,62 @@ The web frontend for an AI-powered personal finance app. Track income and expens
 
 **Live demo:** [finance-dashboard-topaz-seven.vercel.app](https://finance-dashboard-topaz-seven.vercel.app) · **Backend:** [finance-tracker-api](https://github.com/kritagyasuryavanshi/finance-tracker-api) (FastAPI, LangChain, LangGraph, CrewAI)
 
-![Dashboard with income, expense and balance cards and a transaction list](docs/dashboard.png)
+![Overview with income, spending, savings rate and a breakdown of where the money went](docs/dashboard.png)
 
 ## Features
 
-**Dashboard**
-- Live income, expense and balance summary cards
-- Add, list and delete transactions
+**Try it without signing up.** "Try the demo with sample data" opens a private demo account with two months of transactions.
 
-**AI Assistant**
-- One-click AI insights on your spending (Gemini)
-- Chat with your finances, with conversation history
-- **Deep Analysis:** runs a LangGraph agent that scores your financial health and branches to a positive or alert report
-- **Crew Analysis:** runs a CrewAI team of three agents (analyst, advisor, report writer)
+**Overview**
+- Income, spending, balance and savings rate in rupees
+- "Where your money went": every category as a share of income, with what's left saved
 
-**Document Analysis**
-- Upload a CSV bank statement, which the backend chunks and embeds into a vector store
-- Ask questions about it in plain English (retrieval-augmented generation)
+**Transactions**
+- Add income and expenses with category suggestions; search and filter; delete with confirmation
 
-**Auth**
-- Signup and login with JWT; the token is attached to every API call by an Axios interceptor, and any 401 sends the user back to login
+**AI assistant**
+- Chat about your own finances (Gemini), with suggested questions and formatted answers
+- One-click summary of patterns and next steps
+
+**AI agents**
+- **Health check:** a LangGraph agent scores your finances and takes a different path for healthy vs at-risk results
+- **Crew report:** three CrewAI agents (analyst, advisor, writer) produce a monthly report, with live progress
+
+**Bank statements**
+- Upload a CSV (sample included), then ask questions answered from the matching rows (RAG) or by a ReAct agent with tools; answers show which rows they used
+
+**Built for real use**
+- Works on phones (bottom tab bar, stacked rows), keyboard accessible, wakes a sleeping free-tier server with a clear notice
 
 ## Tech stack
 
 - **Next.js 16** (App Router), **React 19**, **TypeScript**
-- **Tailwind CSS 4**
-- **Axios** API client with request/response interceptors
-- React Context for auth state, custom `useTransactions` hook for data
+- **Tailwind CSS 4**, Manrope, lucide icons
+- **react-markdown** for AI answers
+- **Axios** client with JWT interceptor, timeouts and friendly error messages
+- React Context for auth, `useTransactions` hook for data
 
 ## Project structure
 
 ```
 src/
 ├── app/
-│   ├── page.tsx            # Dashboard with Dashboard / AI Assistant / Document Analysis tabs
+│   ├── page.tsx            # app shell: sidebar / mobile tabs + views
 │   ├── login/page.tsx
 │   └── signup/page.tsx
 ├── components/
-│   ├── SummaryCard.tsx
-│   ├── TransactionForm.tsx
-│   ├── TransactionList.tsx
-│   ├── AIInsights.tsx      # insights, chat, LangGraph and CrewAI analyses
-│   ├── documentUpload.tsx
-│   └── documentQuery.tsx
+│   ├── AuthScreen.tsx      # sign in / sign up / demo, server wake-up notice
+│   ├── Overview.tsx        # totals and "where your money went"
+│   ├── Transactions.tsx
+│   ├── Assistant.tsx       # chat + summary
+│   ├── Agents.tsx          # LangGraph and CrewAI runs with progress
+│   ├── Documents.tsx       # CSV upload + RAG / agent questions
+│   └── ui.tsx              # shared buttons, panels, markdown
 ├── context/AuthContext.tsx
 ├── hooks/useTransactions.ts
-└── lib/api.ts              # typed API client (auth, transactions, AI)
+└── lib/
+    ├── api.ts              # typed API client
+    └── format.ts           # rupee and date formatting
 ```
 
 ## Run it locally
