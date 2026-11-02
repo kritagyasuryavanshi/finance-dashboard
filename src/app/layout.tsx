@@ -1,27 +1,22 @@
 // src/app/layout.tsx
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 
-const inter = Inter({ subsets: ['latin'] });
+const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope' });
 
 export const metadata: Metadata = {
-    title: 'Finance Tracker',
-    description: 'AI-Powered Personal Finance Manager',
+    title: 'Finance Tracker: personal finance with AI agents',
+    description:
+        'Track income and spending, then ask an AI about it: RAG over your statements, a LangGraph agent and a CrewAI crew.',
 };
 
-export default function RootLayout({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en">
-            <body className={inter.className}>
-                <AuthProvider>
-                    {children}
-                </AuthProvider>
+        <html lang="en" className={manrope.variable}>
+            <body>
+                <AuthProvider>{children}</AuthProvider>
             </body>
         </html>
     );

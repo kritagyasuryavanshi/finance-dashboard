@@ -1,154 +1,154 @@
 // src/app/page.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Bot, FileText, LayoutDashboard, ListOrdered, LogOut, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useState } from 'react';
 import { useTransactions } from '@/hooks/useTransactions';
-import { SummaryCard } from '@/components/SummaryCard';
-import { TransactionForm } from '@/components/TransactionForm';
-import { TransactionList } from '@/components/TransactionList';
-import { AIInsights } from '@/components/AIInsights';
-import { DocumentUpload } from '@/components/documentUpload';
-import { DocumentQuery } from '@/components/documentQuery';
+import { Overview } from '@/components/Overview';
+import { Transactions } from '@/components/Transactions';
+import { Assistant } from '@/components/Assistant';
+import { Agents } from '@/components/Agents';
+import { Documents } from '@/components/Documents';
+import { ErrorNote } from '@/components/ui';
+
+type View = 'overview' | 'transactions' | 'assistant' | 'agents' | 'documents';
+
+const NAV: { id: View; label: string; title: string; icon: typeof Bot }[] = [
+    { id: 'overview', label: 'Overview', title: 'Overview', icon: LayoutDashboard },
+    { id: 'transactions', label: 'Transactions', title: 'Transactions', icon: ListOrdered },
+    { id: 'assistant', label: 'Assistant', title: 'AI assistant', icon: MessageSquare },
+    { id: 'agents', label: 'Agents', title: 'AI agents', icon: Bot },
+    { id: 'documents', label: 'Statements', title: 'Bank statements', icon: FileText },
+];
+
+function Dashboard() {
+    const { user, isDemo, logout } = useAuth();
+    const { transactions, summary, loading, error, addTransaction, removeTransaction } = useTransactions();
+    const [view, setView] = useState<View>('overview');
+    const [focusForm, setFocusForm] = useState(false);
+    const hasData = (summary?.transaction_count ?? 0) > 0;
+    const current = NAV.find((n) => n.id === view)!;
+
+    const go = (v: View, focus = false) => {
+        setView(v);
+        setFocusForm(focus);
+        window.scrollTo({ top: 0 });
+    };
+
+    return (
+        <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
+            {/* Sidebar (desktop) */}
+            <aside className="sticky top-0 hidden h-screen flex-col border-r border-line bg-surface px-3 py-6 lg:flex">
+                <p className="px-3 text-lg font-bold">Finance Tracker</p>
+                <nav className="mt-8 space-y-1" aria-label="Main">
+                    {NAV.map(({ id, label, icon: Icon }) => (
+                        <button
+                            key={id}
+                            onClick={() => go(id)}
+                            aria-current={view === id ? 'page' : undefined}
+                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                                view === id ? 'bg-teal-soft text-teal' : 'text-muted hover:bg-paper hover:text-ink'
+                            }`}
+                        >
+                            <Icon className="h-4 w-4" aria-hidden />
+                            {label}
+                        </button>
+                    ))}
+                </nav>
+                <div className="mt-auto border-t border-line px-3 pt-4">
+                    <p className="truncate text-sm font-semibold" title={user?.email}>
+                        {isDemo ? 'Demo account' : user?.email}
+                    </p>
+                    <button onClick={logout} className="mt-2 inline-flex items-center gap-2 text-sm text-muted hover:text-ink">
+                        <LogOut className="h-4 w-4" aria-hidden /> Sign out
+                    </button>
+                </div>
+            </aside>
+
+            <div className="pb-24 lg:pb-0">
+                {/* Top bar (mobile) */}
+                <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 lg:hidden">
+                    <p className="font-bold">Finance Tracker</p>
+                    <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-muted" aria-label="Sign out">
+                        <LogOut className="h-4 w-4" /> Sign out
+                    </button>
+                </header>
+
+                <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+                    {isDemo && (
+                        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-[#7a4f12]">
+                            <span>You&apos;re exploring a demo account with sample data. It&apos;s deleted after 24 hours.</span>
+                            <Link href="/signup" onClick={logout} className="font-semibold underline">
+                                Create your own account
+                            </Link>
+                        </div>
+                    )}
+
+                    <h1 className="mb-6 text-2xl font-extrabold tracking-tight sm:text-3xl">{current.title}</h1>
+
+                    {error && <div className="mb-6"><ErrorNote>{error}</ErrorNote></div>}
+
+                    {loading ? (
+                        <div className="space-y-4" aria-busy="true" aria-label="Loading">
+                            <div className="h-24 animate-pulse rounded-[var(--radius-panel)] bg-line/60" />
+                            <div className="h-56 animate-pulse rounded-[var(--radius-panel)] bg-line/60" />
+                        </div>
+                    ) : (
+                        <>
+                            {view === 'overview' && (
+                                <Overview
+                                    summary={summary}
+                                    transactions={transactions}
+                                    onAddFirst={() => go('transactions', true)}
+                                    onOpenTransactions={() => go('transactions')}
+                                />
+                            )}
+                            {view === 'transactions' && (
+                                <Transactions transactions={transactions} onAdd={addTransaction} onDelete={removeTransaction} focusForm={focusForm} />
+                            )}
+                            {view === 'assistant' && <Assistant hasData={hasData} />}
+                            {view === 'agents' && <Agents hasData={hasData} />}
+                            {view === 'documents' && <Documents />}
+                        </>
+                    )}
+                </main>
+            </div>
+
+            {/* Bottom tabs (mobile) */}
+            <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface lg:hidden" aria-label="Main">
+                {NAV.map(({ id, label, icon: Icon }) => (
+                    <button
+                        key={id}
+                        onClick={() => go(id)}
+                        aria-current={view === id ? 'page' : undefined}
+                        className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${view === id ? 'text-teal' : 'text-muted'}`}
+                    >
+                        <Icon className="h-5 w-5" aria-hidden />
+                        {label}
+                    </button>
+                ))}
+            </nav>
+        </div>
+    );
+}
 
 export default function Home() {
-    const { user, loading, logout } = useAuth();
+    const { user, loading } = useAuth();
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'ai' | 'documents'>('dashboard');
 
-    const {
-        transactions,
-        summary,
-        loading: txLoading,
-        error,
-        addTransaction,
-        removeTransaction,
-        refresh,
-    } = useTransactions();
-
-    // ─────────────────────────────────
-    // PROTECT THIS ROUTE
-    // Redirect to login if not logged in
-    // ─────────────────────────────────
     useEffect(() => {
-        if (!loading && !user) {
-            router.push('/login');
-        }
-    }, [user, loading]);
+        if (!loading && !user) router.replace('/login');
+    }, [user, loading, router]);
 
-    // Show loading while checking auth
-    if (loading) {
+    if (loading || !user) {
         return (
-            <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                <div className="text-gray-500">Loading...</div>
+            <div className="flex min-h-screen items-center justify-center text-sm text-muted" aria-busy="true">
+                Loading your account…
             </div>
         );
     }
-
-    // Don't render dashboard if not logged in
-    if (!user) return null;
-
-    return (
-        <main className="min-h-screen bg-gray-100 py-8">
-            <div className="max-w-6xl mx-auto px-4">
-
-                {/* ─── HEADER WITH USER INFO ─── */}
-                <div className="flex justify-between items-center mb-8">
-                    <div>
-                        <h1 className="text-4xl font-bold text-gray-900">
-                            💰 Finance Tracker
-                        </h1>
-                        <p className="text-gray-500 mt-1">
-                            Welcome back, {user.email}!
-                        </p>
-                    </div>
-                    <button
-                        onClick={logout}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors"
-                    >
-                        Sign Out
-                    </button>
-                </div>
-
-                {/* ─── ERROR ─── */}
-                {error && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-                        ⚠️ {error}
-                    </div>
-                )}
-
-                {/* ─── SUMMARY CARDS ─── */}
-                <SummaryCard summary={summary} loading={txLoading} />
-
-                {/* ─── TABS ─── */}
-                <div className="flex gap-2 mb-6 overflow-x-auto">
-                    <button
-                        onClick={() => setActiveTab('dashboard')}
-                        className={`px-6 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                            activeTab === 'dashboard'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-50 border'
-                        }`}
-                    >
-                        📊 Dashboard
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('ai')}
-                        className={`px-6 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                            activeTab === 'ai'
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-50 border'
-                        }`}
-                    >
-                        🤖 AI Assistant
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('documents')}
-                        className={`px-6 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                            activeTab === 'documents'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-50 border'
-                        }`}
-                    >
-                        📁 Document Analysis
-                    </button>
-                </div>
-
-                {/* ─── DASHBOARD TAB ─── */}
-                {activeTab === 'dashboard' && (
-                    <div>
-                        <TransactionForm onSubmit={addTransaction} loading={txLoading} />
-                        <div className="bg-white rounded-lg border">
-                            <div className="px-6 py-4 border-b flex justify-between items-center">
-                                <h2 className="text-lg font-semibold">Transactions</h2>
-                                <button onClick={refresh} className="text-sm text-gray-500">
-                                    🔄 Refresh
-                                </button>
-                            </div>
-                            <div className="p-6">
-                                <TransactionList
-                                    transactions={transactions}
-                                    loading={txLoading}
-                                    onDelete={removeTransaction}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ─── AI TAB ─── */}
-                {activeTab === 'ai' && <AIInsights />}
-
-                {/* ─── DOCUMENTS TAB ─── */}
-                {activeTab === 'documents' && (
-                    <div className="space-y-6">
-                        <DocumentUpload />
-                        <DocumentQuery />
-                    </div>
-                )}
-            </div>
-        </main>
-    );
+    return <Dashboard />;
 }

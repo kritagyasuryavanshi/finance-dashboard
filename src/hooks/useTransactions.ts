@@ -1,91 +1,46 @@
 // src/hooks/useTransactions.ts
 /**
- * Custom hook for transaction data
- * Uses transactionAPI from api.ts
+ * Transactions + summary for the signed-in user.
+ * Loads once on mount; add/remove update local state and refresh the summary.
  */
 
-import { useState, useEffect } from 'react';
-import { transactionAPI, Transaction, TransactionSummary, CreateTransactionInput } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { errorMessage, transactionAPI, Transaction, TransactionSummary, CreateTransactionInput } from '@/lib/api';
 
-interface UseTransactionsReturn {
-    transactions: Transaction[];
-    summary: TransactionSummary | null;
-    loading: boolean;
-    error: string | null;
-    addTransaction: (data: CreateTransactionInput) => Promise<void>;
-    removeTransaction: (id: string) => Promise<void>;
-    refresh: () => Promise<void>;
-}
-
-export function useTransactions(): UseTransactionsReturn {
+export function useTransactions() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [summary, setSummary] = useState<TransactionSummary | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchAll = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const [txData, summaryData] = await Promise.all([
-                transactionAPI.getAll(),
-                transactionAPI.getSummary(),
-            ]);
-            setTransactions(txData);
-            setSummary(summaryData);
-        } catch (err: any) {
-            // 401 handled globally by interceptor
-            if (err.response?.status !== 401) {
-                setError('Failed to load transactions');
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
+    const load = useCallback(
+        () =>
+            Promise.all([transactionAPI.getAll(), transactionAPI.getSummary()])
+                .then(([tx, sum]) => {
+                    setTransactions(tx);
+                    setSummary(sum);
+                    setError(null);
+                })
+                .catch((err) => setError(errorMessage(err, "Couldn't load your transactions.")))
+                .finally(() => setLoading(false)),
+        []
+    );
+
+    useEffect(() => {
+        load();
+    }, [load]);
 
     const addTransaction = async (data: CreateTransactionInput) => {
-        setError(null);
-        try {
-            const newTransaction = await transactionAPI.create(data);
-            setTransactions(prev => [...prev, newTransaction]);
-            // Refresh summary
-            const summaryData = await transactionAPI.getSummary();
-            setSummary(summaryData);
-        } catch (err: any) {
-            setError('Failed to add transaction');
-            throw err;
-        }
+        const created = await transactionAPI.create(data);
+        setTransactions((prev) => [created, ...prev]);
+        setSummary(await transactionAPI.getSummary());
     };
 
     const removeTransaction = async (id: string) => {
-        setError(null);
-        try {
-            await transactionAPI.delete(id);
-            setTransactions(prev => prev.filter(t => t.id !== id));
-            // Refresh summary
-            const summaryData = await transactionAPI.getSummary();
-            setSummary(summaryData);
-        } catch (err: any) {
-            setError('Failed to delete transaction');
-            throw err;
-        }
+        await transactionAPI.delete(id);
+        setTransactions((prev) => prev.filter((t) => t.id !== id));
+        setSummary(await transactionAPI.getSummary());
     };
 
-    const refresh = async () => {
-        await fetchAll();
-    };
-
-    useEffect(() => {
-        fetchAll();
-    }, []);
-
-    return {
-        transactions,
-        summary,
-        loading,
-        error,
-        addTransaction,
-        removeTransaction,
-        refresh,
-    };
+    return { transactions, summary, loading, error, addTransaction, removeTransaction, refresh: load };
 }

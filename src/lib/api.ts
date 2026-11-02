@@ -1,21 +1,14 @@
 // src/lib/api.ts
 /**
- * API Client - Single source of truth for all API calls
- * 
- * Structure:
- * - One axios instance (no baseURL prefix)
- * - Token interceptor (auto-adds JWT to every request)
- * - 401 interceptor (auto-redirect to login)
- * - Separate functions grouped by feature
+ * API client: one axios instance, JWT attached to every request,
+ * friendly error messages, and longer timeouts for AI calls.
  */
 
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-// ─────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────
+// ─── Types ───────────────────────────────
 
 export interface Transaction {
     id: string;
@@ -31,8 +24,6 @@ export interface TransactionSummary {
     total_expense: number;
     balance: number;
     transaction_count: number;
-
-    
 }
 
 export interface ChatMessage {
@@ -60,179 +51,131 @@ export interface AuthResponse {
     email: string;
 }
 
+export interface DeepAnalysis {
+    final_output: string;
+    financial_health: string;
+    alert_message: string;
+    summary: TransactionSummary;
+    error?: string | null;
+}
 
-// ─────────────────────────────────────
-// AXIOS INSTANCE
-// Base URL = API root (no prefix!)
-// ─────────────────────────────────────
+// ─── Instance ────────────────────────────
+
+const DEFAULT_TIMEOUT = 45_000; // free hosting can take ~1 minute to wake
+const AI_TIMEOUT = 150_000; // the CrewAI crew takes about a minute
 
 const api = axios.create({
     baseURL: API_URL,
-    // ↑ Just the base URL e.g. http://localhost:8000
-    //   NO /transactions prefix!
-    //   Each function adds its own path
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    timeout: DEFAULT_TIMEOUT,
+    headers: { 'Content-Type': 'application/json' },
 });
 
-
-// ─────────────────────────────────────
-// REQUEST INTERCEPTOR
-// Automatically adds JWT token to every request
-// ─────────────────────────────────────
-
 api.interceptors.request.use((config) => {
-    // Only runs in browser (not during SSR)
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-            // ↑ Adds to EVERY request automatically
-            //   GET /transactions → includes Bearer token
-            //   POST /transactions → includes Bearer token
-            //   GET /ai/insights → includes Bearer token
-            //   All of them! No manual work needed
-        }
+        if (token) config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
 });
 
-
-// ─────────────────────────────────────
-// RESPONSE INTERCEPTOR
-// Handle 401 errors globally
-// ─────────────────────────────────────
-
+// An expired session sends the user back to sign in. Auth calls themselves are
+// excluded, so a wrong password shows an error instead of reloading the page.
 api.interceptors.response.use(
     (response) => response,
-    // ↑ Success: just return response as-is
-    
-    (error) => {
-        if (error.response?.status === 401) {
-            // Token expired or invalid
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem('token');
-                window.location.href = '/login';
-                // ↑ Force redirect to login page
-                //   Any 401 from ANY endpoint triggers this
-            }
+    (error: AxiosError) => {
+        const url = error.config?.url || '';
+        if (error.response?.status === 401 && !url.startsWith('/auth/') && typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+            window.location.href = '/login';
         }
         return Promise.reject(error);
-        // ↑ Still throw the error
-        //   Calling code can catch it if needed
     }
 );
 
+/** Turn any request failure into one sentence the user can act on. */
+export function errorMessage(err: unknown, fallback = 'Something went wrong. Try again.'): string {
+    const e = err as AxiosError<{ detail?: unknown }>;
+    if (e?.code === 'ECONNABORTED') return 'The server took too long to answer. It may be waking up; try again in a moment.';
+    if (e?.response) {
+        const detail = e.response.data?.detail;
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg).replace(/^Value error, /, '');
+        return fallback;
+    }
+    if (e?.request) return "Can't reach the server. Check your connection, or wait a minute while it wakes up.";
+    return fallback;
+}
 
-// ─────────────────────────────────────
-// AUTH API FUNCTIONS
-// ─────────────────────────────────────
+// ─── Server wake-up ──────────────────────
+
+/** Ping /health; resolves true once the API answers. */
+export async function pingServer(timeout = 70_000): Promise<boolean> {
+    try {
+        await api.get('/health', { timeout });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// ─── Auth ────────────────────────────────
 
 export const authAPI = {
-    signup: async (email: string, password: string): Promise<AuthResponse> => {
-        const response = await api.post('/auth/signup', { email, password });
-        return response.data;
-    },
+    signup: async (email: string, password: string): Promise<AuthResponse> =>
+        (await api.post('/auth/signup', { email, password })).data,
 
-    login: async (email: string, password: string): Promise<AuthResponse> => {
-        const response = await api.post('/auth/login', { email, password });
-        return response.data;
-    },
+    login: async (email: string, password: string): Promise<AuthResponse> =>
+        (await api.post('/auth/login', { email, password })).data,
 
-    me: async (): Promise<User> => {
-        const response = await api.get('/auth/me');
-        return response.data;
-    },
+    demo: async (): Promise<AuthResponse> => (await api.post('/auth/demo', null, { timeout: 70_000 })).data,
+
+    me: async (): Promise<User> => (await api.get('/auth/me')).data,
 };
 
-
-// ─────────────────────────────────────
-// TRANSACTION API FUNCTIONS
-// ─────────────────────────────────────
+// ─── Transactions ────────────────────────
 
 export const transactionAPI = {
-    getAll: async (type?: 'income' | 'expense'): Promise<Transaction[]> => {
-        const params = type ? { transaction_type: type } : {};
-        const response = await api.get('/transactions/', { params });
-        return response.data;
-    },
+    getAll: async (type?: 'income' | 'expense'): Promise<Transaction[]> =>
+        (await api.get('/transactions/', { params: type ? { transaction_type: type } : {} })).data,
 
-    getSummary: async (): Promise<TransactionSummary> => {
-        const response = await api.get('/transactions/summary');
-        return response.data;
-    },
+    getSummary: async (): Promise<TransactionSummary> => (await api.get('/transactions/summary')).data,
 
-    getById: async (id: string): Promise<Transaction> => {
-        const response = await api.get(`/transactions/${id}`);
-        return response.data;
-    },
+    create: async (data: CreateTransactionInput): Promise<Transaction> => (await api.post('/transactions/', data)).data,
 
-    create: async (data: CreateTransactionInput): Promise<Transaction> => {
-        const response = await api.post('/transactions/', data);
-        return response.data;
-    },
-
-    delete: async (id: string): Promise<boolean> => {
-        const response = await api.delete(`/transactions/${id}`);
-        return response.data.success;
-    },
+    delete: async (id: string): Promise<boolean> => (await api.delete(`/transactions/${id}`)).data.success,
 };
 
-
-// ─────────────────────────────────────
-// AI API FUNCTIONS
-// ─────────────────────────────────────
+// ─── AI ──────────────────────────────────
 
 export const aiAPI = {
-    getInsights: async (): Promise<{ response: string }> => {
-        const response = await api.get('/ai/insights');
-        return response.data;
-    },
+    getInsights: async (): Promise<{ response: string }> =>
+        (await api.get('/ai/insights', { timeout: AI_TIMEOUT })).data,
 
-    chat: async (
-        message: string,
-        chatHistory: ChatMessage[] = []  // ← was any[], now properly typed
-    ): Promise<{ response: string }> => {
-        const response = await api.post('/ai/chat', {
-            message,
-            chat_history: chatHistory,
-        });
-        return response.data;
-    },
+    /** `history` = earlier turns only; the new message is sent separately */
+    chat: async (message: string, history: ChatMessage[] = []): Promise<{ response: string }> =>
+        (await api.post('/ai/chat', { message, chat_history: history }, { timeout: AI_TIMEOUT })).data,
 
-    getAdvice: async (category: string, amount: number): Promise<{ response: string }> => {
-        const response = await api.post('/ai/advice', { category, amount });
-        return response.data;
-    },
+    deepAnalysis: async (): Promise<DeepAnalysis> => (await api.get('/ai/deep-analysis', { timeout: AI_TIMEOUT })).data,
 
-    uploadDocument: async (file: File): Promise<{
-        success: boolean;
-        message: string;
-        documents_loaded: number;
-    }> => {
+    crewAnalysis: async (): Promise<{ report: string }> =>
+        (await api.get('/ai/crew-analysis', { timeout: AI_TIMEOUT })).data,
+
+    uploadDocument: async (file: File): Promise<{ success: boolean; message: string; documents_loaded: number }> => {
         const formData = new FormData();
         formData.append('file', file);
-        const response = await api.post('/ai/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
+        return (
+            await api.post('/ai/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: AI_TIMEOUT,
+            })
+        ).data;
     },
 
     queryDocuments: async (
         question: string,
-        useAgent: boolean = false
-    ): Promise<{
-        answer: string;
-        sources: string[];
-        from_agent: boolean;
-    }> => {
-        const response = await api.post('/ai/query-documents', {
-            question,
-            use_agent: useAgent,
-        });
-        return response.data;
-    },
+        useAgent = false
+    ): Promise<{ answer: string; sources?: string[] | null; from_agent: boolean }> =>
+        (await api.post('/ai/query-documents', { question, use_agent: useAgent }, { timeout: AI_TIMEOUT })).data,
 };
 
 export default api;
